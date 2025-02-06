@@ -2,12 +2,13 @@ import os
 import re
 from pathlib import Path
 import json
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 class DependencyAnalyzer:
     def __init__(self, project_path: str):
         self.project_path = Path(project_path)
-        self.dependencies: Dict[str, Optional[str]] = {}
+        # Updated structure to store both version and file locations
+        self.dependencies: Dict[str, Dict[str, any]] = {}
         self.error_log_path = "cpp_parse_errors.txt"
         
         # Common package manager files
@@ -33,6 +34,20 @@ class DependencyAnalyzer:
         with open(self.error_log_path, 'a', encoding='utf-8') as f:
             f.write(error_message + '\n')
 
+    def _add_dependency(self, name: str, version: Optional[str], file_path: Path) -> None:
+        """Add or update a dependency with its version and file location."""
+        rel_path = str(file_path.relative_to(self.project_path))
+        if name not in self.dependencies:
+            self.dependencies[name] = {
+                'version': version,
+                'locations': {rel_path}
+            }
+        else:
+            # Update version if we found one and didn't have one before
+            if version and not self.dependencies[name]['version']:
+                self.dependencies[name]['version'] = version
+            self.dependencies[name]['locations'].add(rel_path)
+
     def analyze_file(self, file_path: Path) -> None:                                       
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -42,31 +57,31 @@ class DependencyAnalyzer:
             
             # Check for package manager files
             if 'cmakelists.txt' in file_name:
-                self._parse_cmake(content)
+                self._parse_cmake(content, file_path)
             elif 'conanfile' in file_name:
-                self._parse_conan(content)
+                self._parse_conan(content, file_path)
             elif 'vcpkg.json' in file_name:
-                self._parse_vcpkg(content)
+                self._parse_vcpkg(content, file_path)
             # Check C++ source and header files
             elif file_path.suffix.lower() in ['.cpp', '.hpp', '.h', '.cc']:
-                self._parse_cpp_file(content)
+                self._parse_cpp_file(content, file_path)
                 
         except Exception as e:
             error_message = f"Error processing {file_path}: {str(e)}"
-            print(error_message)  # Still print to console
-            self.log_error(error_message)  # Also log to file
+            print(error_message)
+            self.log_error(error_message)
 
-    def _parse_cmake(self, content: str) -> None:
+    def _parse_cmake(self, content: str, file_path: Path) -> None:
         matches = re.finditer(self.version_patterns['cmake'], content)
         for match in matches:
-            self.dependencies[match.group(1)] = match.group(2)
+            self._add_dependency(match.group(1), match.group(2), file_path)
 
-    def _parse_conan(self, content: str) -> None:
+    def _parse_conan(self, content: str, file_path: Path) -> None:
         matches = re.finditer(self.version_patterns['conan'], content)
         for match in matches:
-            self.dependencies[match.group(1)] = match.group(2)
+            self._add_dependency(match.group(1), match.group(2), file_path)
 
-    def _parse_vcpkg(self, content: str) -> None:
+    def _parse_vcpkg(self, content: str, file_path: Path) -> None:
         try:
             data = json.loads(content)
             if 'dependencies' in data:
@@ -75,30 +90,30 @@ class DependencyAnalyzer:
                         name = dep.get('name')
                         version = dep.get('version')
                         if name:
-                            self.dependencies[name] = version
+                            self._add_dependency(name, version, file_path)
                     elif isinstance(dep, str):
-                        self.dependencies[dep] = None
+                        self._add_dependency(dep, None, file_path)
         except json.JSONDecodeError:
             # Fall back to regex for malformed JSON
             matches = re.finditer(self.version_patterns['vcpkg'], content)
             for match in matches:
-                self.dependencies[match.group(1)] = match.group(2)
+                self._add_dependency(match.group(1), match.group(2), file_path)
 
-    def _parse_cpp_file(self, content: str) -> None:
+    def _parse_cpp_file(self, content: str, file_path: Path) -> None:
         # Look for include statements
         includes = re.finditer(self.version_patterns['include'], content)
         for match in includes:
             lib_name = match.group(1)
             if lib_name not in ['string', 'vector', 'iostream']:  # Skip standard library
-                self.dependencies.setdefault(lib_name, None)
+                self._add_dependency(lib_name, None, file_path)
         
         # Look for version defines
         defines = re.finditer(self.version_patterns['define'], content)
         for match in defines:
             lib_name = match.group(1).replace('_VERSION', '').lower()
-            self.dependencies[lib_name] = match.group(2)
+            self._add_dependency(lib_name, match.group(2), file_path)
 
-    def scan_project(self) -> Dict[str, Optional[str]]:
+    def scan_project(self) -> Dict[str, Dict[str, any]]:
         """Scan the project directory for dependencies."""
         # Clear any existing error log file
         if os.path.exists(self.error_log_path):
@@ -125,15 +140,27 @@ def main():
 
     # Print results
     print("\nThird-party Components Found:")
-    print("-" * 40)
-    for name, version in sorted_deps.items():
-        version_str = version if version else "Version not found"
-        print(f"{name:<30} {version_str}")
+    print("-" * 80)
+    for name, info in sorted_deps.items():
+        version_str = info['version'] if info['version'] else "Version not found"
+        print(f"\n{name}:")
+        print(f"  Version: {version_str}")
+        print("  Found in:")
+        for location in sorted(info['locations']):
+            print(f"    - {location}")
 
     # Save to JSON if output file specified
     if args.output:
+        # Convert sets to lists for JSON serialization
+        json_deps = {
+            name: {
+                'version': info['version'],
+                'locations': sorted(list(info['locations']))
+            }
+            for name, info in sorted_deps.items()
+        }
         with open(args.output, 'w') as f:
-            json.dump(sorted_deps, f, indent=2)
+            json.dump(json_deps, f, indent=2)
         print(f"\nResults saved to {args.output}")
 
     # Print error log status
