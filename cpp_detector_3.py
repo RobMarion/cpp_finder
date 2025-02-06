@@ -4,14 +4,19 @@ from pathlib import Path
 import json
 from typing import Dict, List, Optional, Tuple, Set
 
+#TODO may want to deal with non utf-8 characters
+#TODO improve version detection
+#TODO guess platform? 
+#TODO create an sbom output option
+
 class DependencyAnalyzer:
     def __init__(self, project_path: str):
         self.project_path = Path(project_path)
-        # Updated structure to store both version and file locations
+        # Structure to store both version and file locations
         self.dependencies: Dict[str, Dict[str, any]] = {}
         self.error_log_path = "cpp_parse_errors.txt"
         
-        # Common package manager files
+        # package manager files. This is good enough (for now)
         self.package_files = [
             'conanfile.txt',
             'conanfile.py',
@@ -20,7 +25,7 @@ class DependencyAnalyzer:
             'packages.config'
         ]
         
-        # Regex patterns for version detection
+        # Regex patterns for version detection. am I missing anything?
         self.version_patterns = {
             'cmake': r'find_package\s*\(\s*(\w+)\s+(\d+[\.\d]*)',
             'include': r'#include\s*[<"](\w+)(?:/[\w\.]+)*[>"]',
@@ -138,7 +143,7 @@ def main():
     # Sort dependencies by name
     sorted_deps = dict(sorted(dependencies.items()))
 
-    # Print results
+    # output results to screen for now. 
     print("\nThird-party Components Found:")
     print("-" * 80)
     for name, info in sorted_deps.items():
@@ -163,7 +168,7 @@ def main():
             json.dump(json_deps, f, indent=2)
         print(f"\nResults saved to {args.output}")
 
-    # Print error log status
+    # print error log
     if os.path.exists(analyzer.error_log_path):
         print(f"\nSome errors occurred during processing. Check {analyzer.error_log_path} for details.")
 
