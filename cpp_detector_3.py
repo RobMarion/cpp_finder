@@ -5,7 +5,7 @@ import json
 from typing import Dict, List, Optional, Tuple, Set
 
 #TODO may want to deal with non utf-8 characters
-#TODO improve version detection
+#TODO improve version detection ... build hash library of top n C++ projects
 #TODO guess platform? 
 #TODO create an sbom output option
 
