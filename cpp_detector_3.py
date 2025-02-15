@@ -14,6 +14,8 @@ class DependencyAnalyzer:
         self.project_path = Path(project_path)
         # Structure to store both version and file locations
         self.dependencies: Dict[str, Dict[str, any]] = {}
+        self.charset = 'windows-1252'  # this could also be utf-8
+        self.exclude_file_types = ['.png','.jpg', .'jpeg', '.xls', '.db']  # partial exclude list
         self.error_log_path = "cpp_parse_errors.txt"
         
         # package manager files. This is good enough (for now)
@@ -36,7 +38,7 @@ class DependencyAnalyzer:
 
     def log_error(self, error_message: str) -> None:
         """Write error message to the error log file."""
-        with open(self.error_log_path, 'a', encoding='utf-8') as f:
+        with open(self.error_log_path, 'a', encoding = self.charset) as f:
             f.write(error_message + '\n')
 
     def _add_dependency(self, name: str, version: Optional[str], file_path: Path) -> None:
@@ -55,7 +57,7 @@ class DependencyAnalyzer:
 
     def analyze_file(self, file_path: Path) -> None:                                       
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding= self.charset) as f:
                 content = f.read()
                 
             file_name = file_path.name.lower()
